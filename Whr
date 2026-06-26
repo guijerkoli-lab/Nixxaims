@@ -1,0 +1,508 @@
+if not game:IsLoaded() then
+    game.Loaded:Wait()
+end
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
+local Camera = workspace.CurrentCamera
+
+-- CONFIGURAÇÕES DO MENU
+local MenuConfig = {
+    Visible = true,
+    CurrentTab = "Aim",
+    
+    -- Aimlock Settings
+    AimlockEnabled = false,
+    AimSmoothness = 0.2,
+    FovRadius = 140,
+    FovVisible = false,
+    
+    -- ESP Settings Master
+    EspEnabled = false,
+    TeamCheckEnabled = false,
+    EspColor = Color3.fromRGB(0, 180, 255),
+    EspBox = false,
+    EspLines = false,
+    EspNames = false,
+    EspHealth = false,
+    EspHealthPercent = false,
+    EspMaxDistance = 1000,
+    EspFontScale = 12,
+
+    -- Visuals Settings
+    FovScreenEnabled = false
+}
+
+local IsAiming = false
+
+-- Interface Principal
+local TargetGuiParent = nil
+pcall(function() TargetGuiParent = game:GetService("CoreGui") end)
+if not TargetGuiParent then TargetGuiParent = LocalPlayer:WaitForChild("PlayerGui", 15) end
+if not TargetGuiParent then return end
+
+if TargetGuiParent:FindFirstChild("DeltaMenuTabs") then
+    TargetGuiParent["DeltaMenuTabs"]:Destroy()
+end
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "DeltaMenuTabs"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.IgnoreGuiInset = true
+ScreenGui.Parent = TargetGuiParent
+
+-- Círculo de FOV
+local FovCircle = Instance.new("Frame")
+FovCircle.AnchorPoint = Vector2.new(0.5, 0.5)
+FovCircle.Position = UDim2.new(0.5, 0, 0.5, 0)
+FovCircle.BackgroundTransparency = 1
+FovCircle.Size = UDim2.new(0, MenuConfig.FovRadius * 2, 0, MenuConfig.FovRadius * 2)
+FovCircle.Visible = MenuConfig.FovVisible
+FovCircle.Parent = ScreenGui
+
+local FovStroke = Instance.new("UIStroke")
+FovStroke.Color = Color3.fromRGB(0, 180, 255)
+FovStroke.Thickness = 1.5
+FovStroke.Parent = FovCircle
+Instance.new("UICorner", FovCircle).CornerRadius = UDim.new(1, 0)
+
+-- BOTÃO FLUTUANTE DO AIMLOCK
+local AimlockButton = Instance.new("TextButton")
+AimlockButton.Size = UDim2.new(0, 70, 0, 70)
+AimlockButton.Position = UDim2.new(0.75, 0, 0.5, 0)
+AimlockButton.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+AimlockButton.Text = "LOCK"
+AimlockButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+AimlockButton.Font = Enum.Font.SourceSansBold
+AimlockButton.TextSize = 16
+AimlockButton.ZIndex = 12
+AimlockButton.Visible = false
+AimlockButton.Parent = ScreenGui
+Instance.new("UICorner", AimlockButton).CornerRadius = UDim.new(1, 0)
+local AimBtnStroke = Instance.new("UIStroke", AimlockButton)
+AimBtnStroke.Color = Color3.fromRGB(0, 180, 255)
+AimBtnStroke.Thickness = 2
+
+AimlockButton.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        if MenuConfig.AimlockEnabled then IsAiming = true AimlockButton.BackgroundColor3 = Color3.fromRGB(0, 120, 200) end
+    end
+end)
+AimlockButton.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        IsAiming = false AimlockButton.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    end
+end)
+
+-- Arrastar Botão Lock
+local dragging, dragInput, dragStart, startPos
+AimlockButton.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInput = input end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        AimlockButton.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+AimlockButton.TouchLongPress:Connect(function(touchPositions, state)
+    if state == Enum.UserInputState.Begin then dragging = true dragStart = Vector3.new(touchPositions[1].X, touchPositions[1].Y, 0) startPos = AimlockButton.Position
+    elseif state == Enum.UserInputState.End or state == Enum.UserInputState.Cancel then dragging = false end
+end)
+
+-- Botão Alternar Menu Principal
+local ToggleButton = Instance.new("TextButton")
+ToggleButton.Size = UDim2.new(0, 100, 0, 35)
+ToggleButton.Position = UDim2.new(0, 20, 0, 60)
+ToggleButton.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+ToggleButton.Text = "MENU: ATIVO"
+ToggleButton.TextColor3 = Color3.fromRGB(0, 180, 255)
+ToggleButton.Font = Enum.Font.SourceSansBold
+ToggleButton.TextSize = 13
+ToggleButton.ZIndex = 10
+ToggleButton.Parent = ScreenGui
+Instance.new("UICorner", ToggleButton).CornerRadius = UDim.new(0, 6)
+Instance.new("UIStroke", ToggleButton).Color = Color3.fromRGB(30, 30, 30)
+
+-- Painel Principal
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 540, 0, 360)
+MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+MainFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+MainFrame.ZIndex = 5
+MainFrame.Parent = ScreenGui
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 8)
+Instance.new("UIStroke", MainFrame).Color = Color3.fromRGB(25, 25, 25)
+
+-- Sidebar
+local Sidebar = Instance.new("Frame")
+Sidebar.Size = UDim2.new(0, 130, 1, 0)
+Sidebar.BackgroundColor3 = Color3.fromRGB(14, 14, 14)
+Sidebar.ZIndex = 5
+Sidebar.Parent = MainFrame
+Instance.new("UICorner", Sidebar).CornerRadius = UDim.new(0, 8)
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 40)
+Title.Text = "BLOX UTILS v16"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.BackgroundTransparency = 1
+Title.Font = Enum.Font.SourceSansBold
+Title.TextSize = 14
+Title.ZIndex = 5
+Title.Parent = Sidebar
+
+local TabContainer = Instance.new("Frame")
+TabContainer.Size = UDim2.new(1, 0, 1, -40)
+TabContainer.Position = UDim2.new(0, 0, 0, 40)
+TabContainer.BackgroundTransparency = 1
+TabContainer.ZIndex = 5
+TabContainer.Parent = Sidebar
+local UIList = Instance.new("UIListLayout", TabContainer)
+UIList.Padding = UDim.new(0, 4)
+
+-- Conteúdo das Abas
+local ContentFrame = Instance.new("Frame")
+ContentFrame.Size = UDim2.new(1, -145, 1, -16)
+ContentFrame.Position = UDim2.new(0, 140, 0, 8)
+ContentFrame.BackgroundTransparency = 1
+ContentFrame.ZIndex = 5
+ContentFrame.Parent = MainFrame
+
+local AimContainer = Instance.new("ScrollingFrame")
+local EspContainer = Instance.new("ScrollingFrame")
+local VisualsContainer = Instance.new("ScrollingFrame")
+
+local allContainers = {AimContainer, EspContainer, VisualsContainer}
+
+local function SetupScroll(sc)
+    sc.Size = UDim2.new(1, 0, 1, 0) 
+    sc.BackgroundTransparency = 1
+    sc.ScrollBarThickness = 2
+    sc.ScrollBarImageColor3 = Color3.fromRGB(40, 40, 40)
+    sc.Visible = false
+    sc.ZIndex = 5
+    sc.Parent = ContentFrame
+    local list = Instance.new("UIListLayout", sc)
+    list.Padding = UDim.new(0, 6)
+    list:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        sc.CanvasSize = UDim2.new(0, 0, 0, list.AbsoluteContentSize.Y + 10)
+    end)
+end
+
+for _, c in pairs(allContainers) do SetupScroll(c) end
+AimContainer.Visible = true
+
+local function CreateTabBtn(name, container)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -12, 0, 30)
+    btn.Position = UDim2.new(0, 6, 0, 0)
+    btn.BackgroundTransparency = 1
+    btn.Text = name
+    btn.TextColor3 = container.Visible and Color3.fromRGB(0, 180, 255) or Color3.fromRGB(140, 140, 140)
+    btn.Font = Enum.Font.SourceSansBold
+    btn.TextSize = 13
+    btn.ZIndex = 6
+    btn.Parent = TabContainer
+    
+    btn.MouseButton1Click:Connect(function()
+        for _, c in pairs(allContainers) do c.Visible = false end
+        container.Visible = true
+        for _, child in pairs(TabContainer:GetChildren()) do
+            if child:IsA("TextButton") then child.TextColor3 = Color3.fromRGB(140, 140, 140) end
+        end
+        btn.TextColor3 = Color3.fromRGB(0, 180, 255)
+    end)
+end
+
+CreateTabBtn("Aimlock", AimContainer)
+CreateTabBtn("ESP System", EspContainer)
+CreateTabBtn("Visuals", VisualsContainer)
+
+-- CONSTRUTORES DE ELEMENTOS
+local function addToggle(parent, text, initialValue, callback)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -6, 0, 32)
+    btn.BackgroundColor3 = Color3.fromRGB(16, 16, 16)
+    btn.Font = Enum.Font.SourceSans
+    btn.TextSize = 13
+    btn.TextColor3 = Color3.fromRGB(200, 200, 200)
+    btn.TextXAlignment = Enum.TextXAlignment.Left
+    btn.Text = "   " .. text
+    btn.ZIndex = 6
+    btn.Parent = parent
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+    Instance.new("UIStroke", btn).Color = Color3.fromRGB(22, 22, 22)
+
+    local ind = Instance.new("Frame")
+    ind.Size = UDim2.new(0, 36, 0, 18)
+    ind.Position = UDim2.new(1, -44, 0.5, -9)
+    ind.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    ind.ZIndex = 6
+    ind.Parent = btn
+    Instance.new("UICorner", ind).CornerRadius = UDim.new(0, 9)
+
+    local dot = Instance.new("Frame")
+    dot.Size = UDim2.new(0, 12, 0, 12)
+    dot.Position = UDim2.new(0, 3, 0.5, -6)
+    dot.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+    dot.ZIndex = 7
+    dot.Parent = ind
+    Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+
+    local state = initialValue
+    local function update()
+        dot.Position = state and UDim2.new(1, -15, 0.5, -6) or UDim2.new(0, 3, 0.5, -6)
+        dot.BackgroundColor3 = state and Color3.fromRGB(0, 180, 255) or Color3.fromRGB(100, 100, 100)
+    end
+    btn.MouseButton1Click:Connect(function() state = not state update() if callback then callback(state) end end)
+    update()
+end
+
+local function addSlider(parent, title, min, max, initialValue, formatStr, callback)
+    local container = Instance.new("Frame")
+    container.Size = UDim2.new(1, -6, 0, 45)
+    container.BackgroundColor3 = Color3.fromRGB(16, 16, 16)
+    container.ZIndex = 6
+    container.Parent = parent
+    Instance.new("UICorner", container).CornerRadius = UDim.new(0, 4)
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -20, 0, 20)
+    lbl.Position = UDim2.new(0, 10, 0, 2)
+    lbl.TextColor3 = Color3.fromRGB(200, 200, 200)
+    lbl.Font = Enum.Font.SourceSans
+    lbl.TextSize = 12
+    lbl.BackgroundTransparency = 1
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.ZIndex = 6
+    lbl.Parent = container
+
+    local slideTrack = Instance.new("Frame")
+    slideTrack.Size = UDim2.new(1, -20, 0, 4)
+    slideTrack.Position = UDim2.new(0, 10, 0, 30)
+    slideTrack.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    slideTrack.ZIndex = 6
+    slideTrack.Parent = container
+    Instance.new("UICorner", slideTrack).CornerRadius = UDim.new(1, 0)
+
+    local slideFill = Instance.new("Frame")
+    slideFill.Size = UDim2.new(0, 0, 1, 0)
+    slideFill.BackgroundColor3 = Color3.fromRGB(0, 180, 255)
+    slideFill.BorderSizePixel = 0
+    slideFill.ZIndex = 7
+    slideFill.Parent = slideTrack
+
+    local slideBtn = Instance.new("TextButton")
+    slideBtn.Size = UDim2.new(0, 12, 0, 12)
+    slideBtn.AnchorPoint = Vector2.new(0.5, 0.5)
+    slideBtn.Position = UDim2.new(0, 0, 0.5, 0)
+    slideBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    slideBtn.Text = ""
+    slideBtn.ZIndex = 8
+    slideBtn.Parent = slideTrack
+    Instance.new("UICorner", slideBtn).CornerRadius = UDim.new(1, 0)
+
+    local currentValue = initialValue
+    local function renderValue(val)
+        lbl.Text = title .. ": " .. string.format(formatStr, val)
+        local pct = (val - min) / (max - min)
+        slideBtn.Position = UDim2.new(pct, 0, 0.5, 0)
+        slideFill.Size = UDim2.new(pct, 0, 1, 0)
+    end
+
+    local function updateFromPos(inputX)
+        local absPos = slideTrack.AbsolutePosition.X
+        local absSize = slideTrack.AbsoluteSize.X
+        local pct = math.clamp((inputX - absPos) / absSize, 0, 1)
+        currentValue = min + (pct * (max - min))
+        renderValue(currentValue)
+        if callback then callback(currentValue) end
+    end
+
+    local dragging = false
+    slideBtn.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = true end end)
+    UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end end)
+    UserInputService.InputChanged:Connect(function(input) if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then updateFromPos(input.Position.X) end end)
+
+    renderValue(currentValue)
+end
+
+-- CONFIGURAÇÃO DOS MENUS INTERNOS
+-- Aimlock Tab
+addToggle(AimContainer, "Enable Aimlock System", MenuConfig.AimlockEnabled, function(v) MenuConfig.AimlockEnabled = v AimlockButton.Visible = v if not v then IsAiming = false end end)
+addSlider(AimContainer, "Aim Smoothness", 0.05, 1.0, MenuConfig.AimSmoothness, "%.2f", function(v) MenuConfig.AimSmoothness = v end)
+addSlider(AimContainer, "Fov Size / Radius", 1, 500, MenuConfig.FovRadius, "%.0f", function(v) MenuConfig.FovRadius = v if FovCircle then FovCircle.Size = UDim2.new(0, v * 2, 0, v * 2) end end)
+addToggle(AimContainer, "Fov Circle Visible", MenuConfig.FovVisible, function(v) FovCircle.Visible = v end)
+
+-- ESP Tab
+addToggle(EspContainer, "ESP Master", MenuConfig.EspEnabled, function(v) MenuConfig.EspEnabled = v end)
+addToggle(EspContainer, "ESP Team Check", MenuConfig.TeamCheckEnabled, function(v) MenuConfig.TeamCheckEnabled = v end)
+addToggle(EspContainer, "ESP Box", MenuConfig.EspBox, function(v) MenuConfig.EspBox = v end)
+addToggle(EspContainer, "ESP Lines", MenuConfig.EspLines, function(v) MenuConfig.EspLines = v end)
+addToggle(EspContainer, "ESP Name", MenuConfig.EspNames, function(v) MenuConfig.EspNames = v end)
+addToggle(EspContainer, "ESP Health", MenuConfig.EspHealth, function(v) MenuConfig.EspHealth = v end)
+addToggle(EspContainer, "ESP Health Percentage", MenuConfig.EspHealthPercent, function(v) MenuConfig.EspHealthPercent = v end)
+
+-- Visuals Tab
+addToggle(VisualsContainer, "Fov Screen (80 FOV)", MenuConfig.FovScreenEnabled, function(v) 
+    MenuConfig.FovScreenEnabled = v 
+    Camera.FieldOfView = v and 80 or 70
+end)
+
+ToggleButton.MouseButton1Click:Connect(function()
+    MenuConfig.Visible = not MenuConfig.Visible
+    MainFrame.Visible = MenuConfig.Visible
+    ToggleButton.Text = MenuConfig.Visible and "MENU: ATIVO" or "MENU: OCULTO"
+end)
+
+local function IsOnAlliedTeam(player)
+    if not MenuConfig.TeamCheckEnabled then return false end
+    if LocalPlayer.Team and player.Team then return LocalPlayer.Team == player.Team end
+    if LocalPlayer.TeamColor and player.TeamColor then return LocalPlayer.TeamColor == player.TeamColor end
+    return false
+end
+
+-- AIMLOCK ENGINE - FILTRAGEM DINÂMICA POR PROXIMIDADE DO INIMIGO
+local function GetAimTarget()
+    local targetPart = nil
+    local shortestMagnitude = math.huge -- Prioriza quem está mais perto fisicamente de você
+    local mousePos = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    local localCharacter = LocalPlayer.Character
+    local localHrp = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
+
+    if not localHrp then return nil end
+
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character then
+            if IsOnAlliedTeam(p) then continue end
+            local hum = p.Character:FindFirstChildOfClass("Humanoid")
+            local head = p.Character:FindFirstChild("Head")
+            local enemyHrp = p.Character:FindFirstChild("HumanoidRootPart")
+            
+            if hum and hum.Health > 0 and head and enemyHrp then
+                local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
+                if onScreen then
+                    -- Verifica se está dentro do círculo do FOV primeiro
+                    local fovDist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                    if fovDist < MenuConfig.FovRadius then
+                        -- Calcula a distância real em Studs do inimigo até o seu personagem
+                        local realDistance = (localHrp.Position - enemyHrp.Position).Magnitude
+                        if realDistance < shortestMagnitude then
+                            shortestMagnitude = realDistance
+                            targetPart = head
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return targetPart
+end
+
+-- LOOP PRINCIPAL (AIMLOCK + FOV)
+RunService.RenderStepped:Connect(function()
+    -- Aimlock com trava de aproximação reativa
+    if MenuConfig.AimlockEnabled and IsAiming then
+        local target = GetAimTarget()
+        if target then
+            local targetCFrame = CFrame.lookAt(Camera.CFrame.Position, target.Position)
+            Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, MenuConfig.AimSmoothness)
+        end
+    end
+
+    -- FOV Screen
+    if MenuConfig.FovScreenEnabled and Camera.FieldOfView ~= 80 then
+        Camera.FieldOfView = 80
+    end
+end)
+
+-- ESP ENGINE TRADICIONAL
+local function ApplyCleanESP(player)
+    local Line = Instance.new("Frame", ScreenGui); Line.BorderSizePixel = 0; Line.Visible = false
+    local Box = Instance.new("Frame", ScreenGui); Box.BackgroundTransparency = 1; Box.Visible = false
+    local Stroke = Instance.new("UIStroke", Box); Stroke.Thickness = 1.5
+    
+    local Text = Instance.new("TextLabel", ScreenGui); Text.BackgroundTransparency = 1; Text.Font = Enum.Font.SourceSansBold; Text.Visible = false
+    local Health = Instance.new("Frame", ScreenGui); Health.BorderSizePixel = 0; Health.Visible = false
+    local HealthLabel = Instance.new("TextLabel", ScreenGui); HealthLabel.BackgroundTransparency = 1; HealthLabel.Font = Enum.Font.SourceSansBold; HealthLabel.TextColor3 = Color3.fromRGB(255, 255, 255); HealthLabel.Visible = false
+
+    RunService.RenderStepped:Connect(function()
+        if not player or not player.Parent or not MenuConfig.EspEnabled or IsOnAlliedTeam(player) then
+            Line.Visible = false; Box.Visible = false; Text.Visible = false; Health.Visible = false; HealthLabel.Visible = false
+            return
+        end
+
+        local char = player.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        local head = char and char:FindFirstChild("Head")
+
+        if hrp and hum and hum.Health > 0 and head then
+            local hrpPos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+            local distance = (Camera.CFrame.Position - hrp.Position).Magnitude
+
+            if onScreen and distance <= MenuConfig.EspMaxDistance then
+                local headPos = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 1.5, 0))
+                local legPos = Camera:WorldToViewportPoint(hrp.Position - Vector3.new(0, 3, 0))
+                
+                local boxHeight = math.abs(headPos.Y - legPos.Y)
+                local boxWidth = boxHeight / 1.5
+
+                Stroke.Color = MenuConfig.EspColor
+
+                if MenuConfig.EspBox then
+                    Box.Size = UDim2.new(0, boxWidth, 0, boxHeight)
+                    Box.Position = UDim2.new(0, hrpPos.X - boxWidth / 2, 0, headPos.Y)
+                    Box.Visible = true
+                else Box.Visible = false end
+
+                if MenuConfig.EspNames then
+                    Text.Text = player.Name
+                    Text.TextSize = MenuConfig.EspFontScale
+                    Text.TextColor3 = Color3.fromRGB(255, 255, 255)
+                    Text.Position = UDim2.new(0, hrpPos.X - 100, 0, headPos.Y - 16)
+                    Text.Size = UDim2.new(0, 200, 0, 14)
+                    Text.Visible = true
+                else Text.Visible = false end
+
+                local hpPct = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
+
+                if MenuConfig.EspHealth then
+                    Health.Size = UDim2.new(0, 3, 0, boxHeight * hpPct)
+                    Health.Position = UDim2.new(0, hrpPos.X - (boxWidth / 2) - 6, 0, headPos.Y + (boxHeight * (1 - hpPct)))
+                    Health.BackgroundColor3 = Color3.fromRGB(255 - (hpPct*255), hpPct*255, 0)
+                    Health.Visible = true
+                else Health.Visible = false end
+
+                if MenuConfig.EspHealthPercent then
+                    HealthLabel.Text = math.floor(hpPct * 100) .. "%"
+                    HealthLabel.TextSize = MenuConfig.EspFontScale - 2
+                    HealthLabel.Position = UDim2.new(0, hrpPos.X - (boxWidth / 2) - 34, 0, headPos.Y + (boxHeight * (1 - hpPct)) - 4)
+                    HealthLabel.Size = UDim2.new(0, 24, 0, 12)
+                    HealthLabel.Visible = true
+                else HealthLabel.Visible = false end
+
+                if MenuConfig.EspLines then
+                    local startPoint = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+                    local endPoint = Vector2.new(hrpPos.X, hrpPos.Y)
+                    local vector = endPoint - startPoint
+                    Line.Size = UDim2.new(0, 1.5, 0, vector.Magnitude)
+                    Line.Position = UDim2.new(0, startPoint.X, 0, startPoint.Y)
+                    Line.Rotation = -math.deg(math.atan2(vector.X, vector.Y))
+                    Line.AnchorPoint = Vector2.new(0.5, 0)
+                    Line.BackgroundColor3 = MenuConfig.EspColor
+                    Line.Visible = true
+                else Line.Visible = false end
+                return
+            end
+        end
+        Line.Visible = false; Box.Visible = false; Text.Visible = false; Health.Visible = false; HealthLabel.Visible = false
+    end)
+end
+
+for _, p in pairs(Players:GetPlayers()) do if p ~= LocalPlayer then ApplyCleanESP(p) end end
+Players.PlayerAdded:Connect(function(p) if p ~= LocalPlayer then ApplyCleanESP(p) end end)
