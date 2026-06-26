@@ -18,6 +18,7 @@ local MenuConfig = {
     AimSmoothness = 0.2,
     FovRadius = 140,
     FovVisible = false,
+    FixButtonLock = false, -- Agora controla o bloqueio de POSIÇÃO
     
     -- ESP Settings Master
     EspEnabled = false,
@@ -85,31 +86,73 @@ local AimBtnStroke = Instance.new("UIStroke", AimlockButton)
 AimBtnStroke.Color = Color3.fromRGB(0, 180, 255)
 AimBtnStroke.Thickness = 2
 
+-- Lógica de funcionamento (Segurar)
 AimlockButton.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-        if MenuConfig.AimlockEnabled then IsAiming = true AimlockButton.BackgroundColor3 = Color3.fromRGB(0, 120, 200) end
-    end
-end)
-AimlockButton.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-        IsAiming = false AimlockButton.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+        if MenuConfig.AimlockEnabled then
+            IsAiming = true
+            AimlockButton.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
+        end
     end
 end)
 
--- Arrastar Botão Lock
-local dragging, dragInput, dragStart, startPos
-AimlockButton.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInput = input end
-end)
-UserInputService.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
-        local delta = input.Position - dragStart
-        AimlockButton.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+AimlockButton.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        IsAiming = false
+        AimlockButton.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
     end
 end)
+
+-- Sistema de Arrastar com Bloqueio de Posição
+local dragging, dragInput, dragStart, startPos
+
+local function updateDrag(input)
+    local delta = input.Position - dragStart
+    AimlockButton.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+end
+
+AimlockButton.InputChanged:Connect(function(input)
+    -- Só permite capturar a entrada de arrasto se a posição NÃO estiver fixada
+    if not MenuConfig.FixButtonLock then
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then 
+            dragInput = input 
+        end
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        updateDrag(input)
+    end
+end)
+
 AimlockButton.TouchLongPress:Connect(function(touchPositions, state)
-    if state == Enum.UserInputState.Begin then dragging = true dragStart = Vector3.new(touchPositions[1].X, touchPositions[1].Y, 0) startPos = AimlockButton.Position
-    elseif state == Enum.UserInputState.End or state == Enum.UserInputState.Cancel then dragging = false end
+    -- Só permite iniciar o arrasto se a posição NÃO estiver fixada
+    if not MenuConfig.FixButtonLock then
+        if state == Enum.UserInputState.Begin then 
+            dragging = true 
+            dragStart = Vector3.new(touchPositions[1].X, touchPositions[1].Y, 0) 
+            startPos = AimlockButton.Position
+        elseif state == Enum.UserInputState.End or state == Enum.UserInputState.Cancel then 
+            dragging = false 
+        end
+    end
+end)
+
+-- Suporte a PC para arrastar (Botão Direito) - Também respeita o bloqueio
+AimlockButton.MouseButton2Down:Connect(function()
+    if not MenuConfig.FixButtonLock then
+        dragging = true
+        local mousePos = UserInputService:GetMouseLocation()
+        dragStart = Vector3.new(mousePos.X, mousePos.Y, 0)
+        startPos = AimlockButton.Position
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+        dragging = false
+    end
 end)
 
 -- Botão Alternar Menu Principal
@@ -147,7 +190,7 @@ Instance.new("UICorner", Sidebar).CornerRadius = UDim.new(0, 8)
 
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 40)
-Title.Text = "BLOX UTILS v16"
+Title.Text = "BLOX UTILS v18"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.BackgroundTransparency = 1
 Title.Font = Enum.Font.SourceSansBold
@@ -333,7 +376,18 @@ end
 
 -- CONFIGURAÇÃO DOS MENUS INTERNOS
 -- Aimlock Tab
-addToggle(AimContainer, "Enable Aimlock System", MenuConfig.AimlockEnabled, function(v) MenuConfig.AimlockEnabled = v AimlockButton.Visible = v if not v then IsAiming = false end end)
+addToggle(AimContainer, "Enable Aimlock System", MenuConfig.AimlockEnabled, function(v) 
+    MenuConfig.AimlockEnabled = v 
+    AimlockButton.Visible = v 
+    if not v then IsAiming = false AimlockButton.BackgroundColor3 = Color3.fromRGB(20, 20, 20) end 
+end)
+
+-- RESOLVIDO: Função alterada para bloquear a POSIÇÃO do botão
+addToggle(AimContainer, "Fix Button Position", MenuConfig.FixButtonLock, function(v) 
+    MenuConfig.FixButtonLock = v 
+    dragging = false -- Cancela qualquer arrasto em andamento imediatamente
+end) 
+
 addSlider(AimContainer, "Aim Smoothness", 0.05, 1.0, MenuConfig.AimSmoothness, "%.2f", function(v) MenuConfig.AimSmoothness = v end)
 addSlider(AimContainer, "Fov Size / Radius", 1, 500, MenuConfig.FovRadius, "%.0f", function(v) MenuConfig.FovRadius = v if FovCircle then FovCircle.Size = UDim2.new(0, v * 2, 0, v * 2) end end)
 addToggle(AimContainer, "Fov Circle Visible", MenuConfig.FovVisible, function(v) FovCircle.Visible = v end)
@@ -369,7 +423,7 @@ end
 -- AIMLOCK ENGINE - FILTRAGEM DINÂMICA POR PROXIMIDADE DO INIMIGO
 local function GetAimTarget()
     local targetPart = nil
-    local shortestMagnitude = math.huge -- Prioriza quem está mais perto fisicamente de você
+    local shortestMagnitude = math.huge
     local mousePos = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
     local localCharacter = LocalPlayer.Character
     local localHrp = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
@@ -386,10 +440,8 @@ local function GetAimTarget()
             if hum and hum.Health > 0 and head and enemyHrp then
                 local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
                 if onScreen then
-                    -- Verifica se está dentro do círculo do FOV primeiro
                     local fovDist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
                     if fovDist < MenuConfig.FovRadius then
-                        -- Calcula a distância real em Studs do inimigo até o seu personagem
                         local realDistance = (localHrp.Position - enemyHrp.Position).Magnitude
                         if realDistance < shortestMagnitude then
                             shortestMagnitude = realDistance
@@ -405,7 +457,6 @@ end
 
 -- LOOP PRINCIPAL (AIMLOCK + FOV)
 RunService.RenderStepped:Connect(function()
-    -- Aimlock com trava de aproximação reativa
     if MenuConfig.AimlockEnabled and IsAiming then
         local target = GetAimTarget()
         if target then
@@ -414,7 +465,6 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
-    -- FOV Screen
     if MenuConfig.FovScreenEnabled and Camera.FieldOfView ~= 80 then
         Camera.FieldOfView = 80
     end
