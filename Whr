@@ -18,8 +18,7 @@ local MenuConfig = {
     AimSmoothness = 0.2,
     FovRadius = 140,
     FovVisible = false,
-    FixButtonLock = false,
-    WallCheckEnabled = false, -- Nova opção de Wall Check
+    WallCheckEnabled = false,
     
     -- ESP Settings Master
     EspEnabled = false,
@@ -36,8 +35,6 @@ local MenuConfig = {
     -- Visuals Settings
     FovScreenEnabled = false
 }
-
-local IsAiming = false
 
 -- Interface Principal
 local TargetGuiParent = nil
@@ -69,89 +66,6 @@ FovStroke.Color = Color3.fromRGB(0, 180, 255)
 FovStroke.Thickness = 1.5
 FovStroke.Parent = FovCircle
 Instance.new("UICorner", FovCircle).CornerRadius = UDim.new(1, 0)
-
--- BOTÃO FLUTUANTE DO AIMLOCK
-local AimlockButton = Instance.new("TextButton")
-AimlockButton.Size = UDim2.new(0, 70, 0, 70)
-AimlockButton.Position = UDim2.new(0.75, 0, 0.5, 0)
-AimlockButton.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-AimlockButton.Text = "LOCK"
-AimlockButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-AimlockButton.Font = Enum.Font.SourceSansBold
-AimlockButton.TextSize = 16
-AimlockButton.ZIndex = 12
-AimlockButton.Visible = false
-AimlockButton.Parent = ScreenGui
-Instance.new("UICorner", AimlockButton).CornerRadius = UDim.new(1, 0)
-local AimBtnStroke = Instance.new("UIStroke", AimlockButton)
-AimBtnStroke.Color = Color3.fromRGB(0, 180, 255)
-AimBtnStroke.Thickness = 2
-
--- Lógica de funcionamento (Segurar)
-AimlockButton.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-        if MenuConfig.AimlockEnabled then
-            IsAiming = true
-            AimlockButton.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
-        end
-    end
-end)
-
-AimlockButton.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-        IsAiming = false
-        AimlockButton.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    end
-end)
-
--- Sistema de Arrastar com Bloqueio de Posição
-local dragging, dragInput, dragStart, startPos
-
-local function updateDrag(input)
-    local delta = input.Position - dragStart
-    AimlockButton.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-end
-
-AimlockButton.InputChanged:Connect(function(input)
-    if not MenuConfig.FixButtonLock then
-        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then 
-            dragInput = input 
-        end
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
-        updateDrag(input)
-    end
-end)
-
-AimlockButton.TouchLongPress:Connect(function(touchPositions, state)
-    if not MenuConfig.FixButtonLock then
-        if state == Enum.UserInputState.Begin then 
-            dragging = true 
-            dragStart = Vector3.new(touchPositions[1].X, touchPositions[1].Y, 0) 
-            startPos = AimlockButton.Position
-        elseif state == Enum.UserInputState.End or state == Enum.UserInputState.Cancel then 
-            dragging = false 
-        end
-    end
-end)
-
-AimlockButton.MouseButton2Down:Connect(function()
-    if not MenuConfig.FixButtonLock then
-        dragging = true
-        local mousePos = UserInputService:GetMouseLocation()
-        dragStart = Vector3.new(mousePos.X, mousePos.Y, 0)
-        startPos = AimlockButton.Position
-    end
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton2 then
-        dragging = false
-    end
-end)
 
 -- Botão Alternar Menu Principal
 local ToggleButton = Instance.new("TextButton")
@@ -188,7 +102,7 @@ Instance.new("UICorner", Sidebar).CornerRadius = UDim.new(0, 8)
 
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 40)
-Title.Text = "BLOX UTILS v19"
+Title.Text = "BLOX UTILS v20"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.BackgroundTransparency = 1
 Title.Font = Enum.Font.SourceSansBold
@@ -376,16 +290,10 @@ end
 -- Aimlock Tab
 addToggle(AimContainer, "Enable Aimlock System", MenuConfig.AimlockEnabled, function(v) 
     MenuConfig.AimlockEnabled = v 
-    AimlockButton.Visible = v 
-    if not v then IsAiming = false AimlockButton.BackgroundColor3 = Color3.fromRGB(20, 20, 20) end 
 end)
-addToggle(AimContainer, "Fix Button Position", MenuConfig.FixButtonLock, function(v) 
-    MenuConfig.FixButtonLock = v 
-    dragging = false
-end) 
 addToggle(AimContainer, "Aimlock Wall Check", MenuConfig.WallCheckEnabled, function(v) 
     MenuConfig.WallCheckEnabled = v 
-end) -- Nova Opção de Interface adicionada
+end)
 addSlider(AimContainer, "Aim Smoothness", 0.05, 1.0, MenuConfig.AimSmoothness, "%.2f", function(v) MenuConfig.AimSmoothness = v end)
 addSlider(AimContainer, "Fov Size / Radius", 1, 500, MenuConfig.FovRadius, "%.0f", function(v) MenuConfig.FovRadius = v if FovCircle then FovCircle.Size = UDim2.new(0, v * 2, 0, v * 2) end end)
 addToggle(AimContainer, "Fov Circle Visible", MenuConfig.FovVisible, function(v) FovCircle.Visible = v end)
@@ -435,7 +343,6 @@ local function IsPlayerVisible(targetPart)
     
     local result = workspace:Raycast(origin, direction, params)
     
-    -- Se o raycast não atingir nada antes do alvo ou atingir o próprio personagem do alvo, está livre.
     if not result or result.Instance:IsDescendantOf(targetPart.Parent) then
         return true
     end
@@ -464,7 +371,6 @@ local function GetAimTarget()
                 if onScreen then
                     local fovDist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
                     if fovDist < MenuConfig.FovRadius then
-                        -- Adiciona verificação de Visibilidade (Wall Check)
                         if IsPlayerVisible(head) then
                             local realDistance = (localHrp.Position - enemyHrp.Position).Magnitude
                             if realDistance < shortestMagnitude then
@@ -482,7 +388,8 @@ end
 
 -- LOOP PRINCIPAL (AIMLOCK + FOV)
 RunService.RenderStepped:Connect(function()
-    if MenuConfig.AimlockEnabled and IsAiming then
+    -- RESOLVIDO: Não depende mais do botão IsAiming, basta estar ativado no menu
+    if MenuConfig.AimlockEnabled then
         local target = GetAimTarget()
         if target then
             local targetCFrame = CFrame.lookAt(Camera.CFrame.Position, target.Position)
