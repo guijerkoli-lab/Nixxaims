@@ -18,7 +18,8 @@ local MenuConfig = {
     AimSmoothness = 0.2,
     FovRadius = 140,
     FovVisible = false,
-    FixButtonLock = false, -- Agora controla o bloqueio de POSIÇÃO
+    FixButtonLock = false,
+    WallCheckEnabled = false, -- Nova opção de Wall Check
     
     -- ESP Settings Master
     EspEnabled = false,
@@ -112,7 +113,6 @@ local function updateDrag(input)
 end
 
 AimlockButton.InputChanged:Connect(function(input)
-    -- Só permite capturar a entrada de arrasto se a posição NÃO estiver fixada
     if not MenuConfig.FixButtonLock then
         if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then 
             dragInput = input 
@@ -127,7 +127,6 @@ UserInputService.InputChanged:Connect(function(input)
 end)
 
 AimlockButton.TouchLongPress:Connect(function(touchPositions, state)
-    -- Só permite iniciar o arrasto se a posição NÃO estiver fixada
     if not MenuConfig.FixButtonLock then
         if state == Enum.UserInputState.Begin then 
             dragging = true 
@@ -139,7 +138,6 @@ AimlockButton.TouchLongPress:Connect(function(touchPositions, state)
     end
 end)
 
--- Suporte a PC para arrastar (Botão Direito) - Também respeita o bloqueio
 AimlockButton.MouseButton2Down:Connect(function()
     if not MenuConfig.FixButtonLock then
         dragging = true
@@ -190,7 +188,7 @@ Instance.new("UICorner", Sidebar).CornerRadius = UDim.new(0, 8)
 
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 40)
-Title.Text = "BLOX UTILS v18"
+Title.Text = "BLOX UTILS v19"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.BackgroundTransparency = 1
 Title.Font = Enum.Font.SourceSansBold
@@ -381,13 +379,13 @@ addToggle(AimContainer, "Enable Aimlock System", MenuConfig.AimlockEnabled, func
     AimlockButton.Visible = v 
     if not v then IsAiming = false AimlockButton.BackgroundColor3 = Color3.fromRGB(20, 20, 20) end 
 end)
-
--- RESOLVIDO: Função alterada para bloquear a POSIÇÃO do botão
 addToggle(AimContainer, "Fix Button Position", MenuConfig.FixButtonLock, function(v) 
     MenuConfig.FixButtonLock = v 
-    dragging = false -- Cancela qualquer arrasto em andamento imediatamente
+    dragging = false
 end) 
-
+addToggle(AimContainer, "Aimlock Wall Check", MenuConfig.WallCheckEnabled, function(v) 
+    MenuConfig.WallCheckEnabled = v 
+end) -- Nova Opção de Interface adicionada
 addSlider(AimContainer, "Aim Smoothness", 0.05, 1.0, MenuConfig.AimSmoothness, "%.2f", function(v) MenuConfig.AimSmoothness = v end)
 addSlider(AimContainer, "Fov Size / Radius", 1, 500, MenuConfig.FovRadius, "%.0f", function(v) MenuConfig.FovRadius = v if FovCircle then FovCircle.Size = UDim2.new(0, v * 2, 0, v * 2) end end)
 addToggle(AimContainer, "Fov Circle Visible", MenuConfig.FovVisible, function(v) FovCircle.Visible = v end)
@@ -420,6 +418,30 @@ local function IsOnAlliedTeam(player)
     return false
 end
 
+-- Mecânica Raycast para conferência de parede (Wall Check)
+local function IsPlayerVisible(targetPart)
+    if not MenuConfig.WallCheckEnabled then return true end
+    
+    local character = LocalPlayer.Character
+    if not character then return false end
+    
+    local origin = Camera.CFrame.Position
+    local direction = (targetPart.Position - origin)
+    
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = {character, Camera, ScreenGui}
+    params.IgnoreWater = true
+    
+    local result = workspace:Raycast(origin, direction, params)
+    
+    -- Se o raycast não atingir nada antes do alvo ou atingir o próprio personagem do alvo, está livre.
+    if not result or result.Instance:IsDescendantOf(targetPart.Parent) then
+        return true
+    end
+    return false
+end
+
 -- AIMLOCK ENGINE - FILTRAGEM DINÂMICA POR PROXIMIDADE DO INIMIGO
 local function GetAimTarget()
     local targetPart = nil
@@ -442,10 +464,13 @@ local function GetAimTarget()
                 if onScreen then
                     local fovDist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
                     if fovDist < MenuConfig.FovRadius then
-                        local realDistance = (localHrp.Position - enemyHrp.Position).Magnitude
-                        if realDistance < shortestMagnitude then
-                            shortestMagnitude = realDistance
-                            targetPart = head
+                        -- Adiciona verificação de Visibilidade (Wall Check)
+                        if IsPlayerVisible(head) then
+                            local realDistance = (localHrp.Position - enemyHrp.Position).Magnitude
+                            if realDistance < shortestMagnitude then
+                                shortestMagnitude = realDistance
+                                targetPart = head
+                            end
                         end
                     end
                 end
